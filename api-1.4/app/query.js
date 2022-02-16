@@ -37,7 +37,7 @@ var queryChaincode = async function (peer, channelName, chaincodeName, args, fcn
 			args: args
 		};
 		let response_payloads = await channel.queryByChaincode(request);
-
+		console.log(response_payloads);
 		if (response_payloads[0].status == 500) {
 			return {
 				status: 500,

@@ -40,6 +40,24 @@ var query = require('./app/query.js');
 var host = process.env.HOST || hfc.getConfigSetting('host');
 var port = process.env.PORT || hfc.getConfigSetting('port');
 
+// Imported database
+
+// const server = require("http").createServer();
+var mysql = require('mysql');
+
+var con = mysql.createConnection({
+	host: "localhost",
+	user: "root",
+	password: "",
+	database: "MP_2021"
+  });
+
+
+
+  con.connect(function(err) {
+	if (err) throw err;
+	console.log("Connected TO DATABASE!");
+  });
 
 app.options('*', cors());
 app.use(cors());
@@ -54,12 +72,12 @@ app.set('secret', 'thisismysecret');
 app.use(expressJWT({
 	secret: 'thisismysecret'
 }).unless({
-	path: ['/users', '/metrics']
+	path: ['/users', '/metrics','/login']
 }));
 app.use(bearerToken());
 app.use(function (req, res, next) {
 	logger.debug(' ------>>>>>> new request for %s', req.originalUrl);
-	if (req.originalUrl.indexOf('/users') >= 0 || req.originalUrl.indexOf('/metrics') >= 0) {
+	if (req.originalUrl.indexOf('/users') >= 0 || req.originalUrl.indexOf('/metrics') >= 0 || req.originalUrl.indexOf('/login') >= 0) {
 		return next();
 	}
 
@@ -104,12 +122,68 @@ function getErrorMessage(field) {
 ///////////////////////// REST ENDPOINTS START HERE ///////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
 // Register and enroll user
+app.post('/login',  async function(req,res){
+
+	var username = req.body.username;
+	
+	var password=req.body.password;
+	console.log(username,password);
+	logger.debug('End point : /login');
+	logger.debug('User name : ' + username);
+	if (!username || username.length==0) {
+		console.log("if_usernamme")
+		res.status(422).json({error:"Username empty"})
+		return;
+	}
+	if (!password || password.length==0) {
+		console.log("if_password")
+		res.status(422).json({error:"Password empty"})
+		return;
+	}
+	
+
+	var access=null;
+	var sql="Select * from Users where name= '"+username +"' and password='"+password+"'";
+      con.query(sql, function (err, result) {
+		  
+        if (err) 
+		{
+			console.log(err);
+			throw err;	
+		}
+        console.log(result);
+		console.log(result.length);
+		if (result && !result.length){
+			console.log("Wrong credentials");
+			
+			// res.json(getErrorMessage('Invalid '));
+			res.status(422).json({error:"Invalid credentials"})
+		}
+		else{
+			const data= JSON.stringify(result[0]);
+			const d=JSON.parse(data);
+			
+			access=d.role;
+			
+			   
+			console.log(access);
+			res.json({ success: true, message: "Sucessfully logged in" ,role:d.role});
+		}		
+	})
+	
+	
+})
+
 app.post('/users', async function (req, res) {
+
 	var username = req.body.username;
 	var orgName = req.body.orgName;
+	var role = req.body.role;
+	
 	logger.debug('End point : /users');
 	logger.debug('User name : ' + username);
 	logger.debug('Org name  : ' + orgName);
+	logger.debug('Role  : ' + role);
 	if (!username) {
 		res.json(getErrorMessage('\'username\''));
 		return;
@@ -118,19 +192,27 @@ app.post('/users', async function (req, res) {
 		res.json(getErrorMessage('\'orgName\''));
 		return;
 	}
+	// if (!role) {
+	// 	res.json(getErrorMessage('\'role\''));
+	// 	return;
+	// }
+	
 	var token = jwt.sign({
 		exp: Math.floor(Date.now() / 1000) + parseInt(hfc.getConfigSetting('jwt_expiretime')),
 		username: username,
-		orgName: orgName
+		orgName: orgName,
+		
 	}, app.get('secret'));
-	let response = await helper.getRegisteredUser(username, orgName, true);
-	logger.debug('-- returned from registering the username %s for organization %s', username, orgName);
+	// response.token = token;
+	// res.json({"Stayus":"Success"});
+	let response = await helper.getRegisteredUser(username, orgName,role, true);
+	logger.debug('-- returned from registering the username %s for organization %s', username, orgName,role);
 	if (response && typeof response !== 'string') {
-		logger.debug('Successfully registered the username %s for organization %s', username, orgName);
+		logger.debug('Successfully registered the username %s for organization %s', username, orgName,role);
 		response.token = token;
 		res.json(response);
 	} else {
-		logger.debug('Failed to register the username %s for organization %s with::%s', username, orgName, response);
+		logger.debug('Failed to register the username %s for organization %s with::%s', username, orgName,role, response);
 		res.json({ success: false, message: response });
 	}
 
@@ -303,7 +385,8 @@ app.post('/channels/:channelName/chaincodes/:chaincodeName', async function (req
 		const response_payload = {
 			result: null,
 			error: error.name,
-			errorData: error.message
+			errorData: error.message,
+			message:"You are not Authorised to access this method"
 		}
 		res.send(response_payload)
 	}

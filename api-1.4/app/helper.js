@@ -46,34 +46,52 @@ async function getClientForOrg(userorg, username) {
 	return client;
 }
 
-var getRegisteredUser = async function (username, userOrg, isJson) {
+var getRegisteredUser = async function (username, userOrg,role, isJson) {
 	try {
 		var client = await getClientForOrg(userOrg);
 		logger.debug('Successfully initialized the credential stores');
+		console.log(role);
 		// client can now act as an agent for organization Org1
 		// first check to see if the user is already enrolled
 		var user = await client.getUserContext(username, true);
+		console.log(role);
 		if (user && user.isEnrolled()) {
 			logger.info('Successfully loaded member from persistence');
+			console.log("if");
 		} else {
 			// user was not enrolled, so we will need an admin user object to register
+			console.log("else");
 			logger.info('User %s was not enrolled, so we will need an admin user object to register', username);
 			var admins = hfc.getConfigSetting('admins');
 			let adminUserObj = await client.setUserContext({ username: admins[0].username, password: admins[0].secret });
 			let caClient = client.getCertificateAuthority();
-			let secret = await caClient.register({
-				enrollmentID: username,
-				affiliation: userOrg.toLowerCase() + '.department1',
-				attrs: [{ name: 'role', value: 'approver', ecert: true }]
-			}, adminUserObj);
+			
+			if (role==""){
+				let secret = await caClient.register({
+						enrollmentID: username,
+						affiliation: userOrg.toLowerCase() + '.department1'
+					}, adminUserObj);
+					user = await client.setUserContext({ username: username, password: secret });
+
+			}
+			else{
+				let secret = await caClient.register({
+					enrollmentID: username,
+					affiliation: userOrg.toLowerCase() + '.department1',
+					attrs: [{ name: 'role', value: role, ecert: true }]
+				}, adminUserObj);
+				user = await client.setUserContext({ username: username, password: secret, attr_reqs: [{ name: 'role', optional: false }] });
+				
+			}
 			// let secret = await caClient.register({
 			// 	enrollmentID: username,
 			// 	affiliation: userOrg.toLowerCase() + '.department1'
 			// }, adminUserObj);
 			logger.debug('Successfully got the secret for user %s', username);
-			user = await client.setUserContext({ username: username, password: secret, attr_reqs: [{ name: 'role', optional: false }] });
+			// user = await client.setUserContext({ username: username, password: secret, attr_reqs: [{ name: 'role', optional: false }] });
 			// user = await client.setUserContext({ username: username, password: secret });
 			logger.debug('Successfully enrolled username %s  and setUserContext on the client object', username);
+			
 		}
 		if (user && user.isEnrolled) {
 			if (isJson && isJson === true) {
@@ -87,6 +105,7 @@ var getRegisteredUser = async function (username, userOrg, isJson) {
 		} else {
 			throw new Error('User was not enrolled ');
 		}
+
 	} catch (error) {
 		logger.error('Failed to get registered user: %s with error: %s', username, error.toString());
 		return 'failed ' + error.toString();
